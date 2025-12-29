@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>沉浸式倒计时 - 终极开发者版</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700;900&display=swap" rel="stylesheet">
+
+<style>
+/* ===== 基础全局样式 ===== */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:Roboto,sans-serif;overflow:hidden; -webkit-user-select:none; user-select:none;}
+body{
+    background:linear-gradient(120deg,#74ebd5,#9face6,#74ebd5);
+    background-size:400% 400%;
+    animation:bgMove 25s ease infinite;
+    display:flex; justify-content:center; align-items:center; color:#fff;
+}
+@keyframes bgMove{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+/* 开发者隐藏区域 */
+#devHotspot { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 9999; cursor: default; }
+#devPanel {
+    position: fixed; top: 20px; left: 20px; background: rgba(0,0,0,0.85); backdrop-filter: blur(20px);
+    padding: 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); z-index: 10000;
+    display: none; width: 300px;
+}
+#devPanel h3 { font-size: 1rem; margin-bottom: 10px; color: #ffcc00; }
+#devTimeSlider { width: 100%; margin: 15px 0; cursor: pointer; }
+
+.container{
+    position:relative; z-index:2; width:min(90vw,900px); padding:60px 70px;
+    border-radius:32px; background:rgba(255,255,255,.18); backdrop-filter:blur(20px);
+    box-shadow: 0 30px 80px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.25);
+    text-align:center; transition: 0.5s;
+}
+
+h1{ font-size:3.2rem; font-weight:900; letter-spacing:.15em; margin-bottom:30px; }
+.time-message{ font-size:1.6rem; margin-bottom:30px; }
+.countdown{ font-size:4.6rem; font-weight:900; animation:breathe 3s ease-in-out infinite; }
+
+.button{
+    margin: 10px; padding:18px 46px; font-size:1.6rem; font-weight:700;
+    border:none; border-radius:999px; cursor:pointer; color:#fff;
+    background:linear-gradient(135deg,#ff9f43,#ff6f00);
+    box-shadow:0 15px 45px rgba(0,0,0,.45); 
+    transition: 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+#playBtn { background: linear-gradient(135deg, #4facfe, #00f2fe); animation: pulse 2s infinite; }
+.button:hover{ transform: translateY(-5px) scale(1.08); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+
+@keyframes breathe{ 0%,100%{transform:scale(1)} 50%{transform:scale(1.03)} }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(79, 172, 254, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 172, 254, 0); } }
+
+/* macOS Launchpad */
+.launchpad {
+    position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(40px); display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-start;
+    padding: 100px 50px; opacity: 0; pointer-events: none;
+    transition: 0.5s cubic-bezier(0.19, 1, 0.22, 1); transform: scale(1.15);
+}
+.launchpad.show { opacity: 1; pointer-events: auto; transform: scale(1); }
+.app-icon { width: 130px; margin: 35px; text-align: center; cursor: pointer; transition: 0.4s; z-index: 102;}
+.app-icon:hover { transform: scale(1.15); }
+.app-icon .img-box {
+    width: 100px; height: 100px; background: rgba(255, 255, 255, 0.15); border-radius: 24px;
+    display: flex; align-items: center; justify-content: center; font-size: 50px; margin: 0 auto 12px;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.3); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.2);
+}
+.close-launchpad-btn {
+    position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);
+    width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s;
+    color: rgba(255,255,255,0.3); font-size: 24px;
+}
+.close-launchpad-btn:hover { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.8); }
+
+/* Overlays */
+.overlay { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.7); backdrop-filter:blur(15px); opacity:0; pointer-events:none; transition:.5s; }
+.overlay.show { opacity:1; pointer-events:auto; }
+.panel { width:fit-content; padding:40px; border-radius:36px; background:rgba(25,25,25,.9); backdrop-filter:blur(30px);
+    box-shadow: 0 50px 150px rgba(0,0,0,0.9); text-align:center; transform:translateY(40px); transition:.5s; }
+.overlay.show .panel { transform:translateY(0); }
+
+/* 2048 游戏 */
+#game2048Board { display: grid; grid-template-columns: repeat(4, 80px); gap: 10px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin: 20px auto; }
+.cell2048 { width: 80px; height: 80px; background: rgba(255,255,255,0.1); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
+.cell-2 { background: #eee4da; color: #776e65; } .cell-4 { background: #ede0c8; color: #776e65; }
+.cell-8 { background: #f2b179; color: white; } .cell-16 { background: #f59563; color: white; }
+.cell-32 { background: #f67c5f; color: white; } .cell-64 { background: #f65e3b; color: white; }
+.cell-128 { background: #edcf72; color: white; font-size: 1.2rem; }
+.cell-256 { background: #edcc61; color: white; font-size: 1.2rem; }
+
+/* 扫肥 */
+#minesweeperBoard { display: grid; gap: 5px; margin: 20px auto; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 16px; }
+.cell { width: 40px; height: 40px; background: rgba(255,255,255,0.1); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; cursor: pointer; transition: 0.2s; border: 1px solid rgba(255,255,255,0.05); }
+.cell.revealed { background: rgba(0,0,0,0.4); cursor: default; }
+
+.full-screen-panel { width: 100vw; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    background: radial-gradient(circle at center, rgba(40,40,60,0.8) 0%, rgba(10,10,20,0.95) 100%); backdrop-filter: blur(50px); text-align: center; color: #fff; }
+.time-huge { font-size: 8rem; font-weight: 900; color: #ff9f43; margin-bottom: 40px; }
+.ghost-button { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px 30px; border-radius: 999px; cursor: pointer; color: #ccc; margin-top: 30px;}
+
+canvas.ripple{ position:fixed; inset:0; pointer-events:none; z-index:1; }
+</style>
+</head>
+
+<body>
+<div id="devHotspot"></div>
+<div id="devPanel">
+    <h3>🛠 开发者调试</h3>
+    <div id="devCurrentTimeDisplay" style="font-family: monospace; font-size: 1.1rem; color:#00ff00;">模拟时间: 00:00:00</div>
+    <input type="range" id="devTimeSlider" min="0" max="86399" value="0">
+    <div style="display: flex; justify-content: space-between;">
+        <button onclick="toggleDevMode(false)" style="background:none; border:1px solid #666; color:#fff; padding:5px; border-radius:5px; cursor:pointer; font-size:12px;">恢复系统时间</button>
+        <button onclick="document.getElementById('devPanel').style.display='none'" style="background:#444; border:none; color:#fff; padding:5px 10px; border-radius:5px; cursor:pointer; font-size:12px;">关闭</button>
+    </div>
+</div>
+
+<canvas id="rippleCanvas" class="ripple"></canvas>
+
+<div class="container" id="main">
+    <h1>倒计时</h1>
+    <div class="time-message" id="msg"></div>
+    <div class="countdown" id="time"></div>
+    <div style="margin-top:20px">
+        <button class="button" id="offBtn" style="display:none">牛马下班键</button>
+        <button class="button" id="playBtn" style="display:none">娱乐一下</button>
+        <div id="subMsg" style="margin-top:15px; font-size:1.2rem; opacity:0.8;"></div>
+    </div>
+</div>
+
+<div class="launchpad" id="launchpad">
+    <div class="app-icon" onclick="startSnake('normal');event.stopPropagation()"><div class="img-box">🐍</div><span>贪吃蛇</span></div>
+    <div class="app-icon" onclick="startSnake('pro');event.stopPropagation()"><div class="img-box">🚀</div><span>贪吃蛇 Pro</span></div>
+    <div class="app-icon" onclick="openMinesweeper();event.stopPropagation()"><div class="img-box">🍰</div><span>扫肥</span></div>
+    <div class="app-icon" onclick="open2048();event.stopPropagation()"><div class="img-box">🔢</div><span>2048</span></div>
+    <div class="close-launchpad-btn" id="launchpadCloseBtn">✕</div>
+</div>
+
+<div class="overlay" id="gameOverlay">
+    <div class="panel">
+        <div style="display: flex; justify-content: space-between; font-size: 1.5rem; margin-bottom: 15px; color: #ffcc00; font-weight: 900;">
+            <div id="scoreBoard">已吃: 0 坨</div><div id="gameTitle">Snake</div>
+        </div>
+        <canvas id="gameCanvas" width="600" height="400" style="background: #000; border-radius: 10px;"></canvas>
+        <button class="button" onclick="closeAll()" style="padding:10px 30px; font-size:1rem; background: #555; margin-top:20px;">退出游戏</button>
+    </div>
+</div>
+
+<div class="overlay" id="mineOverlay">
+    <div class="panel">
+        <h2 style="margin-bottom:10px;">🏃 扫除肥胖</h2>
+        <div id="minesweeperBoard"></div>
+        <button class="button" onclick="closeAll()" style="padding:10px 30px; font-size:1rem; background: #555;">放弃扫肥</button>
+    </div>
+</div>
+
+<div class="overlay" id="overlay2048">
+    <div class="panel">
+        <h2 style="margin-bottom:10px;">🔢 资产 2048</h2>
+        <div style="color:#ffcc00; font-weight:bold; margin-bottom:10px;">得分: <span id="score2048">0</span></div>
+        <div id="game2048Board"></div>
+        <button class="button" onclick="closeAll()" style="padding:10px 30px; font-size:1rem; background: #555;">退出</button>
+    </div>
+</div>
+
+<div class="overlay" id="love">
+    <div class="full-screen-panel">
+        <h2 style="font-size: 4.5rem; font-weight:900;">您已成功下班</h2>
+        <div id="loveTime" class="time-huge"></div>
+        <button class="button" id="randomBtn" style="font-size:2rem; padding: 20px 60px;">领取下班奖励</button>
+        <button class="ghost-button" onclick="location.reload()">回系统继续加班</button>
+    </div>
+</div>
+
+<div class="overlay" id="random">
+    <div class="full-screen-panel">
+        <h2 style="font-size: 2.5rem; letter-spacing: 0.5em; opacity: 0.8;">✨ 今日指引 ✨</h2>
+        <div id="food" style="font-size:5rem; font-weight:900; margin:40px 0; color: #ffcc00;"></div>
+        <p id="oracle" style="font-size:1.8rem; max-width: 800px; line-height: 1.6; font-style: italic;"></p>
+        <button class="ghost-button" onclick="location.reload()">退出指引</button>
+    </div>
+</div>
+
+<script>
+/* ===== 核心变量与初始化 ===== */
+const msg = document.getElementById("msg");
+const time = document.getElementById("time");
+const subMsg = document.getElementById("subMsg");
+const playBtn = document.getElementById("playBtn");
+const offBtn = document.getElementById("offBtn");
+const launchpad = document.getElementById("launchpad");
+const devPanel = document.getElementById("devPanel");
+const devTimeSlider = document.getElementById("devTimeSlider");
+
+let isDevMode = false;
+let devSeconds = 0;
+let devClickCount = 0;
+
+/* ===== 开发者模式逻辑 ===== */
+document.getElementById("devHotspot").onclick = () => {
+    devClickCount++;
+    if(devClickCount >= 5) {
+        devPanel.style.display = "block";
+        isDevMode = true;
+        const now = new Date();
+        devSeconds = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
+        devTimeSlider.value = devSeconds;
+        devClickCount = 0;
+    }
+    setTimeout(() => { devClickCount = 0; }, 2000);
+};
+function toggleDevMode(on) {
+    isDevMode = on;
+    if(!on) devPanel.style.display = "none";
+}
+devTimeSlider.oninput = (e) => {
+    devSeconds = parseInt(e.target.value);
+    const h = Math.floor(devSeconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((devSeconds % 3600) / 60).toString().padStart(2, '0');
+    const s = (devSeconds % 60).toString().padStart(2, '0');
+    document.getElementById("devCurrentTimeDisplay").textContent = `模拟时间: ${h}:${m}:${s}`;
+};
+
+/* ===== 时间逻辑引擎 ===== */
+const phases = [
+    {start:"08:30", end:"11:45", msg:"距离干饭还有", work:true},
+    {start:"11:45", end:"13:00", msg:"距离牛马劳作还有", work:false},
+    {start:"13:00", end:"17:30", msg:"距离下班还有", work:true}
+];
+function toSec(t){ const [h,m] = t.split(":").map(Number); return h*3600 + m*60; }
+function format(sec){ const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=sec%60; return `${h}时${m}分${s}秒`; }
+
+function tick(){
+    let cur;
+    if(isDevMode) {
+        cur = devSeconds;
+    } else {
+        const now = new Date();
+        cur = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
+    }
+    let mtd=false, isW=false;
+    if(cur >= 0 && cur < toSec("05:00")) {
+        msg.textContent = ""; time.textContent = "休息中..."; subMsg.textContent = "身体是革命的本钱。";
+        playBtn.style.display = "none"; offBtn.style.display = "none"; mtd=true;
+    } else if(cur >= toSec("05:00") && cur < toSec("08:30")) {
+        msg.textContent = "距离开工还有"; time.textContent = format(toSec("08:30")-cur);
+        subMsg.textContent = "早起的牛马，早上好！"; playBtn.style.display = "none"; offBtn.style.display = "none"; mtd=true;
+    } else {
+        subMsg.textContent = "";
+        for(const p of phases){
+            const s=toSec(p.start), e=toSec(p.end);
+            if(cur>=s && cur<e){ msg.textContent=p.msg; time.textContent=format(e-cur); isW=p.work; mtd=true; break; }
+        }
+        playBtn.style.display = isW ? "inline-block" : "none";
+        if(!mtd && cur>=toSec("17:30")){ 
+            msg.textContent="下班了，别卷了！"; time.textContent=format(cur-toSec("17:30")); 
+            offBtn.style.display="inline-block"; playBtn.style.display="none"; 
+        }
+    }
+    setTimeout(tick, 1000);
+}
+tick();
+
+/* ===== 通用控制 ===== */
+playBtn.onclick = () => launchpad.classList.add("show");
+document.getElementById("launchpadCloseBtn").onclick = () => launchpad.classList.remove("show");
+function closeAll() {
+    document.querySelectorAll('.overlay').forEach(el => el.classList.remove('show'));
+    gameActive = false; is2048Active = false;
+}
+
+/* ===== 1. 贪吃蛇逻辑 (同步自新版) ===== */
+const gCanvas = document.getElementById("gameCanvas"); const gCtx = gCanvas.getContext("2d");
+const LOGIC_W = 600, LOGIC_H = 400, GRID = 20;
+let snake = [], foodPos = {}, direction = "RIGHT", inputQueue = [], gameActive = false, score = 0, gameChar = "牛", isShifting = false;
+
+function startSnake(mode) {
+    launchpad.classList.remove("show"); document.getElementById("gameOverlay").classList.add("show");
+    gameTitle.textContent = mode === "pro" ? "Snake Pro (Shift加速)" : "Snake Classic";
+    gameChar = mode === "pro" ? "马" : "牛";
+    snake = [{x:100,y:100},{x:80,y:100},{x:60,y:100}]; direction = "RIGHT"; inputQueue = [];
+    score = 0; scoreBoard.textContent = "已吃: 0 坨"; spawnFood(); gameActive = true; gameLoop();
+}
+
+function spawnFood() { foodPos = { x: Math.floor(Math.random()*(LOGIC_W/GRID))*GRID, y: Math.floor(Math.random()*(LOGIC_H/GRID))*GRID }; }
+
+function gameLoop() {
+    if(!gameActive) return;
+    if(inputQueue.length > 0) direction = inputQueue.shift();
+    let head = {...snake[0]};
+    if(direction === "UP") head.y -= GRID; if(direction === "DOWN") head.y += GRID;
+    if(direction === "LEFT") head.x -= GRID; if(direction === "RIGHT") head.x += GRID;
+    if(head.x<0 || head.x>=LOGIC_W || head.y<0 || head.y>=LOGIC_H || snake.some(s=>s.x===head.x && s.y===head.y)) { gameActive = false; alert("游戏结束，得分: " + score); return; }
+    snake.unshift(head);
+    if(head.x === foodPos.x && head.y === foodPos.y) { score++; scoreBoard.textContent = `已吃: ${score} 坨`; spawnFood(); } else { snake.pop(); }
+    gCtx.clearRect(0, 0, LOGIC_W, LOGIC_H);
+    gCtx.save(); gCtx.shadowBlur = 10; gCtx.shadowColor = "#ffcc00";
+    gCtx.strokeStyle = "rgba(255,255,255,0.1)"; for(let x=0; x<=LOGIC_W; x+=GRID){ gCtx.beginPath(); gCtx.moveTo(x,0); gCtx.lineTo(x,LOGIC_H); gCtx.stroke(); }
+    for(let y=0; y<=LOGIC_H; y+=GRID){ gCtx.beginPath(); gCtx.moveTo(0,y); gCtx.lineTo(LOGIC_W,y); gCtx.stroke(); }
+    gCtx.fillStyle = "#FFD700"; gCtx.font = "bold 20px Roboto"; gCtx.fillText("屎", foodPos.x+5, foodPos.y+18);
+    snake.forEach((s, i) => { gCtx.fillStyle = i===0?"#fff":"#aaa"; gCtx.fillText(gameChar, s.x+5, s.y+18); });
+    gCtx.restore(); 
+    setTimeout(() => requestAnimationFrame(gameLoop), isShifting ? 50 : 120);
+}
+
+/* ===== 2. 2048 游戏逻辑 (保留自开发者版) ===== */
+let is2048Active = false, score2048Value = 0, grid2048 = [];
+function open2048() { launchpad.classList.remove("show"); document.getElementById("overlay2048").classList.add("show"); is2048Active = true; init2048(); }
+function init2048() { grid2048 = Array(16).fill(0); score2048Value = 0; update2048Score(); addRandom2048(); addRandom2048(); draw2048(); }
+function addRandom2048() { let empty = grid2048.map((v, i) => v === 0 ? i : -1).filter(v => v !== -1); if (empty.length) grid2048[empty[Math.floor(Math.random()*empty.length)]] = Math.random() < 0.9 ? 2 : 4; }
+function draw2048() { const board = document.getElementById("game2048Board"); board.innerHTML = ""; grid2048.forEach(v => { const cell = document.createElement("div"); cell.className = `cell2048 ${v ? 'cell-'+v : ''}`; cell.textContent = v || ""; board.appendChild(cell); }); }
+function update2048Score() { document.getElementById("score2048").textContent = score2048Value; }
+function move2048(dir) { if(!is2048Active) return; let moved = false; const size = 4; function getRow(i) { return grid2048.slice(i*size, i*size+size); } function setRow(i, row) { row.forEach((v, j) => grid2048[i*size+j] = v); } function getCol(j) { return [grid2048[j], grid2048[j+size], grid2048[j+2*size], grid2048[j+3*size]]; } function setCol(j, col) { col.forEach((v, i) => grid2048[i*size+j] = v); } function slide(arr) { let newArr = arr.filter(v => v); for(let i=0; i<newArr.length-1; i++) { if(newArr[i] === newArr[i+1]) { newArr[i] *= 2; score2048Value += newArr[i]; newArr.splice(i+1, 1); moved = true; } } while(newArr.length < size) newArr.push(0); return newArr; } if(dir === "LEFT" || dir === "RIGHT") { for(let i=0; i<size; i++) { let row = getRow(i); if(dir === "RIGHT") row.reverse(); let newRow = slide(row); if(dir === "RIGHT") newRow.reverse(); if(JSON.stringify(getRow(i)) !== JSON.stringify(newRow)) moved = true; setRow(i, newRow); } } else { for(let j=0; j<size; j++) { let col = getCol(j); if(dir === "DOWN") col.reverse(); let newCol = slide(col); if(dir === "DOWN") newCol.reverse(); if(JSON.stringify(getCol(j)) !== JSON.stringify(newCol)) moved = true; setCol(j, newCol); } } if(moved) { addRandom2048(); draw2048(); update2048Score(); } }
+
+/* ===== 3. 扫肥逻辑 (保留自开发者版) ===== */
+function openMinesweeper() { launchpad.classList.remove("show"); mineOverlay.classList.add("show"); initMinesweeper(); }
+function initMinesweeper() { const container = document.getElementById("minesweeperBoard"); container.style.gridTemplateColumns = `repeat(10, 40px)`; container.innerHTML = ""; for(let i=0; i<100; i++) { const cell = document.createElement("div"); cell.className = "cell"; cell.onclick = () => { cell.classList.add("revealed"); cell.textContent = "🍰"; }; container.appendChild(cell); } }
+
+/* ===== 下班后逻辑 ===== */
+const foods=[{emoji:"🍜",name:"拉面"},{emoji:"🍔",name:"汉堡"},{emoji:"🍰",name:"蛋糕"},{emoji:"🍕",name:"披萨"},{emoji:"🍣",name:"寿司"}];
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+offBtn.onclick=()=>{ loveTime.textContent=time.textContent; main.style.display="none"; love.classList.add("show"); };
+randomBtn.onclick=()=>{ const f=pick(foods); food.textContent=`${f.emoji} ${f.name}`; oracle.textContent="你已经很努力了，下班的时间完全属于你自己，去享受生活吧。"; love.classList.remove("show"); random.classList.add("show"); };
+
+/* ===== 涟漪与监听 ===== */
+window.addEventListener("keydown", e => {
+    if(is2048Active && ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) move2048(e.key.replace("Arrow","").toUpperCase());
+    if(e.key === "Shift") isShifting = true;
+    let l = inputQueue[inputQueue.length-1] || direction;
+    if(e.key === "ArrowUp" && l !== "DOWN") inputQueue.push("UP"); if(e.key === "ArrowDown" && l !== "UP") inputQueue.push("DOWN");
+    if(e.key === "ArrowLeft" && l !== "RIGHT") inputQueue.push("LEFT"); if(e.key === "ArrowRight" && l !== "LEFT") inputQueue.push("RIGHT");
+});
+window.addEventListener("keyup", e => { if (e.key === "Shift") isShifting = false; });
+
+const rCanvas=document.getElementById("rippleCanvas"); const rCtx=rCanvas.getContext("2d");
+let ripples=[]; function resize(){rCanvas.width=innerWidth;rCanvas.height=innerHeight}
+addEventListener("resize",resize); resize(); addEventListener("mousemove",e=>ripples.push({x:e.clientX,y:e.clientY,r:0,a:.35}));
+function rippleLoop(){ rCtx.clearRect(0,0,innerWidth,innerHeight); ripples.forEach((r,i)=>{ r.r+=2; r.a-=.01; if(r.a<=0) ripples.splice(i,1); rCtx.beginPath(); rCtx.arc(r.x,r.y,r.r,0,Math.PI*2); rCtx.strokeStyle=`rgba(255,255,255,${r.a})`; rCtx.stroke(); }); requestAnimationFrame(rippleLoop); }
+rippleLoop();
+</script>
+</body>
+</html>
